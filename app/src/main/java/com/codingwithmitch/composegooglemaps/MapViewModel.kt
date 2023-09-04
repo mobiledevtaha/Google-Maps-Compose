@@ -1,99 +1,128 @@
 package com.codingwithmitch.composegooglemaps
 
 import android.annotation.SuppressLint
-import android.content.Context
-import android.graphics.Color
+import android.location.Location
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.mutableStateOf
 import androidx.lifecycle.ViewModel
-import com.codingwithmitch.composegooglemaps.clusters.ZoneClusterItem
-import com.codingwithmitch.composegooglemaps.clusters.ZoneClusterManager
-import com.codingwithmitch.composegooglemaps.clusters.calculateCameraViewPoints
-import com.codingwithmitch.composegooglemaps.clusters.getCenterOfPolygon
 import com.google.android.gms.location.FusedLocationProviderClient
 import com.google.android.gms.maps.GoogleMap
 import com.google.android.gms.maps.model.LatLng
-import com.google.android.gms.maps.model.LatLngBounds
-import com.google.maps.android.ktx.model.polygonOptions
+import com.google.android.gms.maps.model.MarkerOptions
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 
 @HiltViewModel
-class MapViewModel @Inject constructor(): ViewModel() {
-
-    val state: MutableState<MapState> = mutableStateOf(
-        MapState(
-            lastKnownLocation = null,
-            clusterItems = listOf(
-                ZoneClusterItem(
-                    id = "zone-1",
-                    title = "Zone 1",
-                    snippet = "This is Zone 1.",
-                    polygonOptions = polygonOptions {
-                        add(LatLng(49.105, -122.524))
-                        add(LatLng(49.101, -122.529))
-                        add(LatLng(49.092, -122.501))
-                        add(LatLng(49.1, -122.506))
-                        fillColor(POLYGON_FILL_COLOR)
-                    }
+class MapViewModel @Inject constructor() : ViewModel() {
+    private val fakeApiResponse = ApiResponse(
+        type = "FeatureCollection",
+        features = listOf(
+            Feature(
+                type = "Feature",
+                id = "11540315",
+                geometry = Geometry(
+                    type = "Point",
+                    coordinates = listOf(44.0092659, 36.1914291)
                 ),
-                ZoneClusterItem(
-                    id = "zone-2",
-                    title = "Zone 2",
-                    snippet = "This is Zone 2.",
-                    polygonOptions = polygonOptions {
-                        add(LatLng(49.110, -122.554))
-                        add(LatLng(49.107, -122.559))
-                        add(LatLng(49.103, -122.551))
-                        add(LatLng(49.112, -122.549))
-                        fillColor(POLYGON_FILL_COLOR)
-                    }
+                properties = Properties(
+                    xid = "W34133277",
+                    name = "Citadel of Erbil",
+                    rate = 7,
+                    osm = "way/34133277",
+                    wikidata = "Q206236",
+                    kinds = "fortifications,historic,archaeology,interesting_places,castles,other_archaeological_sites"
+                )
+            ),
+            Feature(
+                type = "Feature",
+                id = "11540316",
+                geometry = Geometry(
+                    type = "Point",
+                    coordinates = listOf(44.0093002, 36.1913757)
+                ),
+                properties = Properties(
+                    xid = "W391279970",
+                    name = "Citadel of Erbil",
+                    rate = 7,
+                    osm = "way/391279970",
+                    wikidata = "Q206236",
+                    kinds = "architecture,historic_architecture,fortifications,historic,archaeology,interesting_places,destroyed_objects,other_fortifications,other_archaeological_sites"
+                )
+            ),
+            Feature(
+                type = "Feature",
+                id = "5094175",
+                geometry = Geometry(
+                    type = "Point",
+                    coordinates = listOf(44.0191154, 36.2010422)
+                ),
+                properties = Properties(
+                    xid = "N7643376805",
+                    name = "Jalil Khayat Mosque",
+                    rate = 3,
+                    osm = "node/7643376805",
+                    wikidata = "Q19960324",
+                    kinds = "religion,mosques,interesting_places"
                 )
             )
         )
     )
 
+    val state: MutableState<MapState> = mutableStateOf(
+        MapState(
+            lastKnownLocation = null,
+            apiResponse = fakeApiResponse,
+            latLng = LatLng(0.0, 0.0)
+        )
+    )
+
+    private val delta = 0.1
+
+    private fun calculateBoundingBox(location: Location): Map<String, Double> {
+        return mapOf(
+            "lon_min" to (location.longitude - delta),
+            "lon_max" to (location.longitude + delta),
+            "lat_min" to (location.latitude - delta),
+            "lat_max" to (location.latitude + delta)
+        )
+    }
+
+
+    fun addApiResponseToMap(map: GoogleMap) {
+        fakeApiResponse.features.forEach { feature ->
+            val coordinates = feature.geometry.coordinates
+            state.value = state.value.copy(
+                apiResponse = fakeApiResponse,
+                latLng = LatLng(coordinates[1], coordinates[0])
+            )
+            map.addMarker(MarkerOptions().position(state.value.latLng))
+        }
+    }
+
+
     @SuppressLint("MissingPermission")
     fun getDeviceLocation(
         fusedLocationProviderClient: FusedLocationProviderClient
-    ) {
-        /*
-         * Get the best and most recent location of the device, which may be null in rare
-         * cases when a location is not available.
-         */
+    ): LatLng {
+        var userLatLng = LatLng(0.0, 0.0)
         try {
             val locationResult = fusedLocationProviderClient.lastLocation
             locationResult.addOnCompleteListener { task ->
-                if (task.isSuccessful) {
-                    state.value = state.value.copy(
-                        lastKnownLocation = task.result,
-                    )
+                if (task.isSuccessful && task.result != null) {
+                    state.value = state.value.copy(lastKnownLocation = task.result)
+                    // Navigate to user's current location
+                    userLatLng = LatLng(task.result.latitude, task.result.longitude)
+
+                    // Compute the bounding box
+                    val boundingBox = calculateBoundingBox(task.result)
+                    // Do something with the boundingBox, perhaps make an API call
                 }
             }
         } catch (e: SecurityException) {
             // Show error or something
         }
-    }
-
-    fun setupClusterManager(
-        context: Context,
-        map: GoogleMap,
-    ): ZoneClusterManager {
-        val clusterManager = ZoneClusterManager(context, map)
-        clusterManager.addItems(state.value.clusterItems)
-        return clusterManager
-    }
-
-    fun calculateZoneLatLngBounds(): LatLngBounds {
-        // Get all the points from all the polygons and calculate the camera view that will show them all.
-        val latLngs = state.value.clusterItems.map { it.polygonOptions }
-                .map { it.points.map { LatLng(it.latitude, it.longitude) } }.flatten()
-       return latLngs.calculateCameraViewPoints().getCenterOfPolygon()
+        return userLatLng
     }
 
 
-
-    companion object {
-        private val POLYGON_FILL_COLOR = Color.parseColor("#ABF44336")
-    }
 }

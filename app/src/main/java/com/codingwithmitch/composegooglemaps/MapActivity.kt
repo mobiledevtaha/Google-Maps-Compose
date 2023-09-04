@@ -15,7 +15,8 @@ import dagger.hilt.android.AndroidEntryPoint
 
 @AndroidEntryPoint
 class MapActivity : ComponentActivity() {
-
+    private lateinit var fusedLocationProviderClient: FusedLocationProviderClient
+    private val viewModel: MapViewModel by viewModels()
     private val requestPermissionLauncher =
         registerForActivityResult(
             ActivityResultContracts.RequestPermission()
@@ -25,21 +26,6 @@ class MapActivity : ComponentActivity() {
             }
         }
 
-    private fun askPermissions() = when {
-        ContextCompat.checkSelfPermission(
-            this,
-            ACCESS_FINE_LOCATION
-        ) == PackageManager.PERMISSION_GRANTED -> {
-            viewModel.getDeviceLocation(fusedLocationProviderClient)
-        }
-        else -> {
-            requestPermissionLauncher.launch(ACCESS_FINE_LOCATION)
-        }
-    }
-
-    private lateinit var fusedLocationProviderClient: FusedLocationProviderClient
-    private val viewModel: MapViewModel by viewModels()
-
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         fusedLocationProviderClient = LocationServices.getFusedLocationProviderClient(this)
@@ -47,10 +33,23 @@ class MapActivity : ComponentActivity() {
         setContent {
             MapScreen(
                 state = viewModel.state.value,
-                setupClusterManager = viewModel::setupClusterManager,
-                calculateZoneViewCenter = viewModel::calculateZoneLatLngBounds
+                addApiResponseToMap = viewModel::addApiResponseToMap,
             )
         }
     }
+
+    private fun askPermissions() = when {
+        ContextCompat.checkSelfPermission(
+            this,
+            ACCESS_FINE_LOCATION
+        ) == PackageManager.PERMISSION_GRANTED -> {
+            viewModel.getDeviceLocation(fusedLocationProviderClient)
+        }
+
+        else -> {
+            requestPermissionLauncher.launch(ACCESS_FINE_LOCATION)
+        }
+    }
+
 }
 
